@@ -1,0 +1,136 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{1A1DA722-FE8A-4B49-86ED-DC582F0B0B47}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>KoiVM.Runtime</RootNamespace>
+    <AssemblyName>KoiVM.Runtime</AssemblyName>
+    <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Trace|AnyCPU'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>TRACE;__TRACE</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DebugType>full</DebugType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisIgnoreBuiltInRuleSets>false</CodeAnalysisIgnoreBuiltInRuleSets>
+    <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\GlobalAssemblyInfo.cs">
+      <Link>Properties\GlobalAssemblyInfo.cs</Link>
+    </Compile>
+    <Compile Include="Data\VCallMap.cs" />
+    <Compile Include="Data\VMData.cs" />
+    <Compile Include="Data\VMExportInfo.cs" />
+    <Compile Include="Data\OpCodeMap.cs" />
+    <Compile Include="Data\VMFuncSig.cs" />
+    <Compile Include="Dynamic\Constants.cs" />
+    <Compile Include="Execution\Internal\EHHelper.cs" />
+    <Compile Include="Execution\PointerRef.cs" />
+    <Compile Include="Execution\FieldRef.cs" />
+    <Compile Include="Execution\Internal\ValueTypeBox.cs" />
+    <Compile Include="Execution\Internal\SizeOfHelper.cs" />
+    <Compile Include="Execution\TypedRef.cs" />
+    <Compile Include="Execution\EHFrame.cs" />
+    <Compile Include="Execution\EHState.cs" />
+    <Compile Include="Execution\ExecutionState.cs" />
+    <Compile Include="Execution\Internal\ArrayStoreHelpers.cs" />
+    <Compile Include="Execution\Internal\DirectCall.cs" />
+    <Compile Include="Execution\Internal\TypedReferenceHelpers.cs" />
+    <Compile Include="Execution\Internal\Unverifier.cs" />
+    <Compile Include="Execution\Internal\VMTrampoline.cs" />
+    <Compile Include="Execution\IReference.cs" />
+    <Compile Include="Execution\PointerType.cs" />
+    <Compile Include="Execution\StackRef.cs" />
+    <Compile Include="Execution\TypedRefPtr.cs" />
+    <Compile Include="Execution\VMContext.cs" />
+    <Compile Include="Execution\VMDispatcher.cs" />
+    <Compile Include="Execution\VMSlot.cs" />
+    <Compile Include="Execution\VMStack.cs" />
+    <Compile Include="OpCodes\Add.cs" />
+    <Compile Include="OpCodes\Cmp.cs" />
+    <Compile Include="OpCodes\Call.cs" />
+    <Compile Include="OpCodes\IConv.cs" />
+    <Compile Include="OpCodes\FConv.cs" />
+    <Compile Include="OpCodes\Sub.cs" />
+    <Compile Include="OpCodes\Nop.cs" />
+    <Compile Include="OpCodes\Sx.cs" />
+    <Compile Include="OpCodes\Shr.cs" />
+    <Compile Include="OpCodes\Div.cs" />
+    <Compile Include="OpCodes\Shl.cs" />
+    <Compile Include="OpCodes\Mul.cs" />
+    <Compile Include="OpCodes\Leave.cs" />
+    <Compile Include="OpCodes\Try.cs" />
+    <Compile Include="OpCodes\Vcall.cs" />
+    <Compile Include="OpCodes\Rem.cs" />
+    <Compile Include="OpCodes\Nor.cs" />
+    <Compile Include="OpCodes\Ret.cs" />
+    <Compile Include="OpCodes\Lind.cs" />
+    <Compile Include="OpCodes\Sind.cs" />
+    <Compile Include="OpCodes\Jmp.cs" />
+    <Compile Include="OpCodes\Pop.cs" />
+    <Compile Include="OpCodes\IOpCode.cs" />
+    <Compile Include="OpCodes\Push.cs" />
+    <Compile Include="Platform.cs" />
+    <Compile Include="Utils.cs" />
+    <Compile Include="Data\VMDataInitializer.cs" />
+    <Compile Include="VCalls\Box.cs" />
+    <Compile Include="VCalls\Cast.cs" />
+    <Compile Include="VCalls\Ckfinite.cs" />
+    <Compile Include="VCalls\Ckoverflow.cs" />
+    <Compile Include="VCalls\Rangechk.cs" />
+    <Compile Include="VCalls\Sizeof.cs" />
+    <Compile Include="VCalls\Localloc.cs" />
+    <Compile Include="VCalls\Initobj.cs" />
+    <Compile Include="VCalls\Token.cs" />
+    <Compile Include="VCalls\Throw.cs" />
+    <Compile Include="VCalls\Ldftn.cs" />
+    <Compile Include="VCalls\Stfld.cs" />
+    <Compile Include="VCalls\Ldfld.cs" />
+    <Compile Include="VCalls\Unbox.cs" />
+    <Compile Include="VCalls\Exit.cs" />
+    <Compile Include="VCalls\Ecall.cs" />
+    <Compile Include="VCalls\IVCall.cs" />
+    <Compile Include="VMEntry.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="VMInstance.cs" />
+  </ItemGroup>
+  <ItemGroup />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="BeforeBuild">
+    <MSBuild Projects="$(SolutionDir)\libs\UpdateVersion.csproj" Targets="Build" Properties="Configuration=Release" />
+    <Exec WorkingDirectory="$(SolutionDir)\libs" Command="UpdateVersion.exe &quot;$(SolutionDir)" Timeout="60000" />
+  </Target>
+</Project>

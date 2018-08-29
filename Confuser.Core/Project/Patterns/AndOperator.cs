@@ -1,0 +1,30 @@
+﻿#region
+
+using dnlib.DotNet;
+
+#endregion
+
+namespace Confuser.Core.Project.Patterns
+{
+    /// <summary>
+    ///     The AND operator.
+    /// </summary>
+    public class AndOperator : PatternOperator
+    {
+        internal const string OpName = "and";
+
+        /// <inheritdoc />
+        public override string Name => OpName;
+
+        /// <inheritdoc />
+        public override bool IsUnary => false;
+
+        /// <inheritdoc />
+        public override object Evaluate(IDnlibDef definition)
+        {
+            var a = (bool) OperandA.Evaluate(definition);
+            if(!a) return false;
+            return (bool) OperandB.Evaluate(definition);
+        }
+    }
+}

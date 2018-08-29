@@ -1,0 +1,86 @@
+%header%
+
+GRAMMARTYPE = "LL"
+
+%tokens%
+STR = <<("[^"]*"|'[^']*')>>
+NUM = <<(0x[0-9a-fA-F]+|-?[0-9]+(.[0-9]+)?)>>
+REG = <<(R0|R1|R2|R3|R4|R5|R6|R7|BP|SP|IP|FL|K1|K2|M1|M2)>>
+ASTTYPE = <<(I4|I8|R4|R8|O|Ptr|ByRef)>>
+ID = <<[a-zA-Z_][a-zA-Z0-9_]*>>
+WHITESPACE = <<[ \t]+>> %ignore%
+NEWLINE = <<[\r\n]+>>
+COMMENT = <<//[^\r\n]*>>
+
+DATA_DECL = ".data"
+TYPE_DECL = ".type"
+METHOD_DECL = ".method"
+INSTANCE = ".instance"
+CODE_HEADER = ".code"
+CODE_FOOTER = ".end"
+
+LEFT_ANG = "<"
+RIGHT_ANG = ">"
+LEFT_PAREN = "("
+RIGHT_PAREN = ")"
+LEFT_BRACE = "{"
+RIGHT_BRACE = "}"
+LEFT_BRACKET = "["
+RIGHT_BRACKET = "]"
+EQUALS = "="
+COMMA = ","
+COLON = ":"
+PLUS = "+"
+MINUS = "-"
+DOT = "."
+DELIM = "::"
+
+%productions%
+
+Program = Block+ ;
+
+Block = (COMMENT | Data | Code | TypeRefDecl | MethodRefDecl) NEWLINE* ;
+
+Data = '.data' ID ('(' DataSize ')' | DataContent) ;
+
+DataSize = NUM ;
+
+DataContent = '=' (DataBuffer | DataString) ;
+
+DataString = STR ;
+
+DataBuffer = '[' (NUM ',')* NUM ']' | '[' ']' ;
+
+Code = '.code' ID NEWLINE ((COMMENT NEWLINE+) | Instr)* '.end' ;
+
+Instr = OpCode NEWLINE+| OpCode Operand NEWLINE+| OpCode Operand ',' Operand NEWLINE+ ;
+
+OpCode = ID ;
+
+Operand = Number | Register | Pointer | '{' Reference '}' ;
+
+Number = (Type ':')? NUM ;
+
+Register = (Type ':')? REG ;
+
+Pointer = (Type ':')? '[' Register PointerOffset? ']' ;
+
+PointerOffset = ('+'|'-') NUM ;
+
+Reference = ID ;
+
+Type = ASTTYPE ('(' RawType ')')? ;
+
+RawType = ID ;
+
+TypeRefDecl = ".type" ID TypeRef ;
+
+MethodRefDecl = ".method" ID MethodRef ;
+
+TypeRef = STR ;
+
+MethodRef = INSTANCE? MethodRetType TypeRef "::" STR MethodParams ;
+
+MethodRetType = TypeRef ;
+
+MethodParams = '(' TypeRef (',' TypeRef)* ')' | '(' ')' ;

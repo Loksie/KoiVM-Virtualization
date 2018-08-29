@@ -1,0 +1,54 @@
+KoiVM
+mixed arch (8 GPR + flag + 2 key + 2 magic + stack)
+register size 32b
+R0 R1 R2 R3 R4 R5 R6 R7
+BP SP IP FL K1 K2 M1 M2
+keys: instr decryption
+magic: alter rt behav
+instrctions are typeless/infoless
+manual eh instructions!
+
+marco-code -> FSM -> micro-code
+0/1 operand
+ret -> change encryption key -> call site change key
+
+flags(8bits):
+OVERFLOW
+CARRY
+ZERO
+SIGN
+UNSIGNED
+BEHAV1
+BEHAV2
+BEHAV3
+
+NOP    NO OPERATION
+
+MOV    MEMORY MOVE
+POP    STACK POP
+PUSH   STACK PUSH
+CALL   CALL METHOD
+RET    RETURN
+
+NOR    LOGICAL NOR
+
+CMP    COMPARE
+JZ     JUMP IF ZERO
+JNZ    JUMP IF NOT ZERO
+JMP    UNCONDITIONAL JUMP
+SWT    SWITCH JUMP TABLE
+
+ADD    INTEGER ADD
+MUL    INTEGER MULTIPLY
+DIV    INTEGER DIVIDE
+REM    INTEGER REMAINDER
+SHR    SHIFT RIGHT
+SHL    SHIFT LEFT
+
+FCONV  FLOAT CONVERT INTEGER
+ICONV  INTEGER CONVERT FLOAT
+
+TRY    ENTER PROTECTED REGION
+LEAVE  LEAVE PROTECTED REGION
+
+VCALL  VM CALL

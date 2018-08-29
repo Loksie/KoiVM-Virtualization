@@ -1,0 +1,11 @@
+KoiVM todo:
+
+Integrity check w/ branches
+Multiple copy of opcodes
+Code-path dependent opcodes
+junk code
+polymorph
+opaque predicate
+
+Better stack trace
+Merging runtime

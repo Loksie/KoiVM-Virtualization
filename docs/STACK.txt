@@ -1,0 +1,26 @@
+PUSH:
+ADD SP  , 1
+MOV [SP], VAL
+
+POP:
+MOV VAL, [SP]
+SUB SP  , 1
+
+PUSH BP
+MOV BP, SP
+
+
+ADD SP  , 1
+MOV [SP], BP
+MOV BP, SP
+
+
+-4 arg0
+-3 arg1
+-2 arg2
+-1 retn adr
+ 0 BP
+ 1 local0
+ 2 local1
+ 3 local2
+ 4 

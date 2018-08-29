@@ -1,0 +1,53 @@
+0. EXIT
+Exit VM
+
+1. BREAK
+Debugger break point
+
+2. ECALL
+External call/callvirt/newobj
+
+3. CAST
+castclass/isinst
+
+4. CKFINITE
+ckfinite
+
+5. CKOVERFLOW
+check argument, throw exception if not zero
+
+6. INIT
+initobj
+
+7. ELEMA
+ldelema
+
+8. LDFLD
+ld(s)fld(a)
+
+9. LDFTN
+ldftn/ldvirtft
+
+10. TOKEN
+ldtoken
+
+11. THROW
+throw/rethrow (InternalPreserveStackTrace)
+
+12. SIZEOF
+sizeof
+
+13. STFLD
+st(s)fld
+
+14. LDOBJ
+ldobj
+
+15. STOBJ
+stobj
+
+16. BOX
+box
+
+17. UNBOX
+unbox

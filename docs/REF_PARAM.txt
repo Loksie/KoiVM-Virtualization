@@ -1,0 +1,17 @@
+struct VarSetReq {
+	public string VarName;
+	public object Value;
+}
+
+static int _f;
+static void DoItWrapper(ref int x) {
+	foreach (var req in DoIt()) {
+		if (req.VarName == "x")
+			x = (int)req.Value;
+	}
+}
+static IEnumerable<VarSetReq> DoIt() {
+	_f = 100;
+	yield return new VarSetReq() { VarName = "x", Value = 0 };
+	Console.WriteLine(_f);
+}

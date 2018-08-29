@@ -1,0 +1,694 @@
+﻿#region
+
+using System;
+using System.IO;
+
+#endregion
+
+namespace Confuser.Runtime
+{
+    internal static class Lzma
+    {
+        private const uint kNumStates = 12;
+
+        private const int kNumPosSlotBits = 6;
+
+        private const uint kNumLenToPosStates = 4;
+
+        private const uint kMatchMinLen = 2;
+
+        private const int kNumAlignBits = 4;
+        private const uint kAlignTableSize = 1 << kNumAlignBits;
+
+        private const uint kStartPosModelIndex = 4;
+        private const uint kEndPosModelIndex = 14;
+
+        private const uint kNumFullDistances = 1 << ((int) kEndPosModelIndex / 2);
+
+        private const int kNumPosStatesBitsMax = 4;
+        private const uint kNumPosStatesMax = 1 << kNumPosStatesBitsMax;
+
+        private const int kNumLowLenBits = 3;
+        private const int kNumMidLenBits = 3;
+        private const int kNumHighLenBits = 8;
+        private const uint kNumLowLenSymbols = 1 << kNumLowLenBits;
+        private const uint kNumMidLenSymbols = 1 << kNumMidLenBits;
+
+        public static byte[] Decompress(byte[] data)
+        {
+            var s = new MemoryStream(data);
+            var decoder = new LzmaDecoder();
+            var prop = new byte[5];
+            s.Read(prop, 0, 5);
+            decoder.SetDecoderProperties(prop);
+            long outSize = 0;
+            for(var i = 0; i < 8; i++)
+            {
+                var v = s.ReadByte();
+                outSize |= (long) (byte) v << (8 * i);
+            }
+            var b = new byte[(int) outSize];
+            var z = new MemoryStream(b, true);
+            var compressedSize = s.Length - 13;
+            decoder.Code(s, z, compressedSize, outSize);
+            return b;
+        }
+
+        private struct BitDecoder
+        {
+            public const int kNumBitModelTotalBits = 11;
+            public const uint kBitModelTotal = 1 << kNumBitModelTotalBits;
+            private const int kNumMoveBits = 5;
+
+            private uint Prob;
+
+            public void Init()
+            {
+                Prob = kBitModelTotal >> 1;
+            }
+
+            public uint Decode(Decoder rangeDecoder)
+            {
+                var newBound = (rangeDecoder.Range >> kNumBitModelTotalBits) * Prob;
+                if(rangeDecoder.Code < newBound)
+                {
+                    rangeDecoder.Range = newBound;
+                    Prob += (kBitModelTotal - Prob) >> kNumMoveBits;
+                    if(rangeDecoder.Range < Decoder.kTopValue)
+                    {
+                        rangeDecoder.Code = (rangeDecoder.Code << 8) | (byte) rangeDecoder.Stream.ReadByte();
+                        rangeDecoder.Range <<= 8;
+                    }
+                    return 0;
+                }
+                rangeDecoder.Range -= newBound;
+                rangeDecoder.Code -= newBound;
+                Prob -= Prob >> kNumMoveBits;
+                if(rangeDecoder.Range < Decoder.kTopValue)
+                {
+                    rangeDecoder.Code = (rangeDecoder.Code << 8) | (byte) rangeDecoder.Stream.ReadByte();
+                    rangeDecoder.Range <<= 8;
+                }
+                return 1;
+            }
+        }
+
+        private struct BitTreeDecoder
+        {
+            private readonly BitDecoder[] Models;
+            private readonly int NumBitLevels;
+
+            public BitTreeDecoder(int numBitLevels)
+            {
+                NumBitLevels = numBitLevels;
+                Models = new BitDecoder[1 << numBitLevels];
+            }
+
+            public void Init()
+            {
+                for(uint i = 1; i < 1 << NumBitLevels; i++)
+                    Models[i].Init();
+            }
+
+            public uint Decode(Decoder rangeDecoder)
+            {
+                uint m = 1;
+                for(var bitIndex = NumBitLevels; bitIndex > 0; bitIndex--)
+                    m = (m << 1) + Models[m].Decode(rangeDecoder);
+                return m - ((uint) 1 << NumBitLevels);
+            }
+
+            public uint ReverseDecode(Decoder rangeDecoder)
+            {
+                uint m = 1;
+                uint symbol = 0;
+                for(var bitIndex = 0; bitIndex < NumBitLevels; bitIndex++)
+                {
+                    var bit = Models[m].Decode(rangeDecoder);
+                    m <<= 1;
+                    m += bit;
+                    symbol |= bit << bitIndex;
+                }
+                return symbol;
+            }
+
+            public static uint ReverseDecode(BitDecoder[] Models, uint startIndex,
+                Decoder rangeDecoder, int NumBitLevels)
+            {
+                uint m = 1;
+                uint symbol = 0;
+                for(var bitIndex = 0; bitIndex < NumBitLevels; bitIndex++)
+                {
+                    var bit = Models[startIndex + m].Decode(rangeDecoder);
+                    m <<= 1;
+                    m += bit;
+                    symbol |= bit << bitIndex;
+                }
+                return symbol;
+            }
+        }
+
+        private class Decoder
+        {
+            public const uint kTopValue = 1 << 24;
+            public uint Code;
+            public uint Range;
+            public Stream Stream;
+
+            public void Init(Stream stream)
+            {
+                // Stream.Init(stream);
+                Stream = stream;
+
+                Code = 0;
+                Range = 0xFFFFFFFF;
+                for(var i = 0; i < 5; i++)
+                    Code = (Code << 8) | (byte) Stream.ReadByte();
+            }
+
+            public void ReleaseStream()
+            {
+                Stream = null;
+            }
+
+            public void Normalize()
+            {
+                while(Range < kTopValue)
+                {
+                    Code = (Code << 8) | (byte) Stream.ReadByte();
+                    Range <<= 8;
+                }
+            }
+
+            public uint DecodeDirectBits(int numTotalBits)
+            {
+                var range = Range;
+                var code = Code;
+                uint result = 0;
+                for(var i = numTotalBits; i > 0; i--)
+                {
+                    range >>= 1;
+                    /*
+                    result <<= 1;
+                    if (code >= range)
+                    {
+                        code -= range;
+                        result |= 1;
+                    }
+                    */
+                    var t = (code - range) >> 31;
+                    code -= range & (t - 1);
+                    result = (result << 1) | (1 - t);
+
+                    if(range < kTopValue)
+                    {
+                        code = (code << 8) | (byte) Stream.ReadByte();
+                        range <<= 8;
+                    }
+                }
+                Range = range;
+                Code = code;
+                return result;
+            }
+        }
+
+        private class LzmaDecoder
+        {
+            private readonly BitDecoder[] m_IsMatchDecoders = new BitDecoder[kNumStates << kNumPosStatesBitsMax];
+            private readonly BitDecoder[] m_IsRep0LongDecoders = new BitDecoder[kNumStates << kNumPosStatesBitsMax];
+            private readonly BitDecoder[] m_IsRepDecoders = new BitDecoder[kNumStates];
+            private readonly BitDecoder[] m_IsRepG0Decoders = new BitDecoder[kNumStates];
+            private readonly BitDecoder[] m_IsRepG1Decoders = new BitDecoder[kNumStates];
+            private readonly BitDecoder[] m_IsRepG2Decoders = new BitDecoder[kNumStates];
+
+            private readonly LenDecoder m_LenDecoder = new LenDecoder();
+
+            private readonly LiteralDecoder m_LiteralDecoder = new LiteralDecoder();
+            private readonly OutWindow m_OutWindow = new OutWindow();
+            private readonly BitDecoder[] m_PosDecoders = new BitDecoder[kNumFullDistances - kEndPosModelIndex];
+            private readonly BitTreeDecoder[] m_PosSlotDecoder = new BitTreeDecoder[kNumLenToPosStates];
+            private readonly Decoder m_RangeDecoder = new Decoder();
+            private readonly LenDecoder m_RepLenDecoder = new LenDecoder();
+            private readonly bool _solid = false;
+
+            private uint m_DictionarySize;
+            private uint m_DictionarySizeCheck;
+            private BitTreeDecoder m_PosAlignDecoder = new BitTreeDecoder(kNumAlignBits);
+
+            private uint m_PosStateMask;
+
+            public LzmaDecoder()
+            {
+                m_DictionarySize = 0xFFFFFFFF;
+                for(var i = 0; i < kNumLenToPosStates; i++)
+                    m_PosSlotDecoder[i] = new BitTreeDecoder(kNumPosSlotBits);
+            }
+
+            private void SetDictionarySize(uint dictionarySize)
+            {
+                if(m_DictionarySize != dictionarySize)
+                {
+                    m_DictionarySize = dictionarySize;
+                    m_DictionarySizeCheck = Math.Max(m_DictionarySize, 1);
+                    var blockSize = Math.Max(m_DictionarySizeCheck, 1 << 12);
+                    m_OutWindow.Create(blockSize);
+                }
+            }
+
+            private void SetLiteralProperties(int lp, int lc)
+            {
+                m_LiteralDecoder.Create(lp, lc);
+            }
+
+            private void SetPosBitsProperties(int pb)
+            {
+                var numPosStates = (uint) 1 << pb;
+                m_LenDecoder.Create(numPosStates);
+                m_RepLenDecoder.Create(numPosStates);
+                m_PosStateMask = numPosStates - 1;
+            }
+
+            private void Init(Stream inStream, Stream outStream)
+            {
+                m_RangeDecoder.Init(inStream);
+                m_OutWindow.Init(outStream, _solid);
+
+                uint i;
+                for(i = 0; i < kNumStates; i++)
+                {
+                    for(uint j = 0; j <= m_PosStateMask; j++)
+                    {
+                        var index = (i << kNumPosStatesBitsMax) + j;
+                        m_IsMatchDecoders[index].Init();
+                        m_IsRep0LongDecoders[index].Init();
+                    }
+                    m_IsRepDecoders[i].Init();
+                    m_IsRepG0Decoders[i].Init();
+                    m_IsRepG1Decoders[i].Init();
+                    m_IsRepG2Decoders[i].Init();
+                }
+
+                m_LiteralDecoder.Init();
+                for(i = 0; i < kNumLenToPosStates; i++)
+                    m_PosSlotDecoder[i].Init();
+                // m_PosSpecDecoder.Init();
+                for(i = 0; i < kNumFullDistances - kEndPosModelIndex; i++)
+                    m_PosDecoders[i].Init();
+
+                m_LenDecoder.Init();
+                m_RepLenDecoder.Init();
+                m_PosAlignDecoder.Init();
+            }
+
+            public void Code(Stream inStream, Stream outStream,
+                long inSize, long outSize)
+            {
+                Init(inStream, outStream);
+
+                var state = new State();
+                state.Init();
+                uint rep0 = 0, rep1 = 0, rep2 = 0, rep3 = 0;
+
+                ulong nowPos64 = 0;
+                var outSize64 = (ulong) outSize;
+                if(nowPos64 < outSize64)
+                {
+                    m_IsMatchDecoders[state.Index << kNumPosStatesBitsMax].Decode(m_RangeDecoder);
+                    state.UpdateChar();
+                    var b = m_LiteralDecoder.DecodeNormal(m_RangeDecoder, 0, 0);
+                    m_OutWindow.PutByte(b);
+                    nowPos64++;
+                }
+                while(nowPos64 < outSize64) // UInt64 next = Math.Min(nowPos64 + (1 << 18), outSize64);
+                    // while(nowPos64 < next)
+                {
+                    var posState = (uint) nowPos64 & m_PosStateMask;
+                    if(m_IsMatchDecoders[(state.Index << kNumPosStatesBitsMax) + posState].Decode(m_RangeDecoder) == 0)
+                    {
+                        byte b;
+                        var prevByte = m_OutWindow.GetByte(0);
+                        if(!state.IsCharState())
+                            b = m_LiteralDecoder.DecodeWithMatchByte(m_RangeDecoder,
+                                (uint) nowPos64, prevByte, m_OutWindow.GetByte(rep0));
+                        else
+                            b = m_LiteralDecoder.DecodeNormal(m_RangeDecoder, (uint) nowPos64, prevByte);
+                        m_OutWindow.PutByte(b);
+                        state.UpdateChar();
+                        nowPos64++;
+                    }
+                    else
+                    {
+                        uint len;
+                        if(m_IsRepDecoders[state.Index].Decode(m_RangeDecoder) == 1)
+                        {
+                            if(m_IsRepG0Decoders[state.Index].Decode(m_RangeDecoder) == 0)
+                            {
+                                if(m_IsRep0LongDecoders[(state.Index << kNumPosStatesBitsMax) + posState].Decode(m_RangeDecoder) == 0)
+                                {
+                                    state.UpdateShortRep();
+                                    m_OutWindow.PutByte(m_OutWindow.GetByte(rep0));
+                                    nowPos64++;
+                                    continue;
+                                }
+                            }
+                            else
+                            {
+                                uint distance;
+                                if(m_IsRepG1Decoders[state.Index].Decode(m_RangeDecoder) == 0)
+                                {
+                                    distance = rep1;
+                                }
+                                else
+                                {
+                                    if(m_IsRepG2Decoders[state.Index].Decode(m_RangeDecoder) == 0)
+                                    {
+                                        distance = rep2;
+                                    }
+                                    else
+                                    {
+                                        distance = rep3;
+                                        rep3 = rep2;
+                                    }
+                                    rep2 = rep1;
+                                }
+                                rep1 = rep0;
+                                rep0 = distance;
+                            }
+                            len = m_RepLenDecoder.Decode(m_RangeDecoder, posState) + kMatchMinLen;
+                            state.UpdateRep();
+                        }
+                        else
+                        {
+                            rep3 = rep2;
+                            rep2 = rep1;
+                            rep1 = rep0;
+                            len = kMatchMinLen + m_LenDecoder.Decode(m_RangeDecoder, posState);
+                            state.UpdateMatch();
+                            var posSlot = m_PosSlotDecoder[GetLenToPosState(len)].Decode(m_RangeDecoder);
+                            if(posSlot >= kStartPosModelIndex)
+                            {
+                                var numDirectBits = (int) ((posSlot >> 1) - 1);
+                                rep0 = (2 | (posSlot & 1)) << numDirectBits;
+                                if(posSlot < kEndPosModelIndex)
+                                {
+                                    rep0 += BitTreeDecoder.ReverseDecode(m_PosDecoders,
+                                        rep0 - posSlot - 1, m_RangeDecoder, numDirectBits);
+                                }
+                                else
+                                {
+                                    rep0 += m_RangeDecoder.DecodeDirectBits(
+                                                numDirectBits - kNumAlignBits) << kNumAlignBits;
+                                    rep0 += m_PosAlignDecoder.ReverseDecode(m_RangeDecoder);
+                                }
+                            }
+                            else
+                            {
+                                rep0 = posSlot;
+                            }
+                        }
+                        if(rep0 >= nowPos64 || rep0 >= m_DictionarySizeCheck)
+                            if(rep0 == 0xFFFFFFFF)
+                                break;
+                        m_OutWindow.CopyBlock(rep0, len);
+                        nowPos64 += len;
+                    }
+                }
+                m_OutWindow.Flush();
+                m_OutWindow.ReleaseStream();
+                m_RangeDecoder.ReleaseStream();
+            }
+
+            public void SetDecoderProperties(byte[] properties)
+            {
+                var lc = properties[0] % 9;
+                var remainder = properties[0] / 9;
+                var lp = remainder % 5;
+                var pb = remainder / 5;
+                uint dictionarySize = 0;
+                for(var i = 0; i < 4; i++)
+                    dictionarySize += (uint) properties[1 + i] << (i * 8);
+                SetDictionarySize(dictionarySize);
+                SetLiteralProperties(lp, lc);
+                SetPosBitsProperties(pb);
+            }
+
+            private static uint GetLenToPosState(uint len)
+            {
+                len -= kMatchMinLen;
+                if(len < kNumLenToPosStates)
+                    return len;
+                return unchecked(kNumLenToPosStates - 1);
+            }
+
+            private class LenDecoder
+            {
+                private readonly BitTreeDecoder[] m_LowCoder = new BitTreeDecoder[kNumPosStatesMax];
+                private readonly BitTreeDecoder[] m_MidCoder = new BitTreeDecoder[kNumPosStatesMax];
+                private BitDecoder m_Choice = new BitDecoder();
+                private BitDecoder m_Choice2 = new BitDecoder();
+                private BitTreeDecoder m_HighCoder = new BitTreeDecoder(kNumHighLenBits);
+                private uint m_NumPosStates;
+
+                public void Create(uint numPosStates)
+                {
+                    for(var posState = m_NumPosStates; posState < numPosStates; posState++)
+                    {
+                        m_LowCoder[posState] = new BitTreeDecoder(kNumLowLenBits);
+                        m_MidCoder[posState] = new BitTreeDecoder(kNumMidLenBits);
+                    }
+                    m_NumPosStates = numPosStates;
+                }
+
+                public void Init()
+                {
+                    m_Choice.Init();
+                    for(uint posState = 0; posState < m_NumPosStates; posState++)
+                    {
+                        m_LowCoder[posState].Init();
+                        m_MidCoder[posState].Init();
+                    }
+                    m_Choice2.Init();
+                    m_HighCoder.Init();
+                }
+
+                public uint Decode(Decoder rangeDecoder, uint posState)
+                {
+                    if(m_Choice.Decode(rangeDecoder) == 0)
+                        return m_LowCoder[posState].Decode(rangeDecoder);
+                    var symbol = kNumLowLenSymbols;
+                    if(m_Choice2.Decode(rangeDecoder) == 0)
+                    {
+                        symbol += m_MidCoder[posState].Decode(rangeDecoder);
+                    }
+                    else
+                    {
+                        symbol += kNumMidLenSymbols;
+                        symbol += m_HighCoder.Decode(rangeDecoder);
+                    }
+                    return symbol;
+                }
+            }
+
+            private class LiteralDecoder
+            {
+                private Decoder2[] m_Coders;
+                private int m_NumPosBits;
+                private int m_NumPrevBits;
+                private uint m_PosMask;
+
+                public void Create(int numPosBits, int numPrevBits)
+                {
+                    if(m_Coders != null && m_NumPrevBits == numPrevBits &&
+                       m_NumPosBits == numPosBits)
+                        return;
+                    m_NumPosBits = numPosBits;
+                    m_PosMask = ((uint) 1 << numPosBits) - 1;
+                    m_NumPrevBits = numPrevBits;
+                    var numStates = (uint) 1 << (m_NumPrevBits + m_NumPosBits);
+                    m_Coders = new Decoder2[numStates];
+                    for(uint i = 0; i < numStates; i++)
+                        m_Coders[i].Create();
+                }
+
+                public void Init()
+                {
+                    var numStates = (uint) 1 << (m_NumPrevBits + m_NumPosBits);
+                    for(uint i = 0; i < numStates; i++)
+                        m_Coders[i].Init();
+                }
+
+                private uint GetState(uint pos, byte prevByte)
+                {
+                    return ((pos & m_PosMask) << m_NumPrevBits) + (uint) (prevByte >> (8 - m_NumPrevBits));
+                }
+
+                public byte DecodeNormal(Decoder rangeDecoder, uint pos, byte prevByte)
+                {
+                    return m_Coders[GetState(pos, prevByte)].DecodeNormal(rangeDecoder);
+                }
+
+                public byte DecodeWithMatchByte(Decoder rangeDecoder, uint pos, byte prevByte, byte matchByte)
+                {
+                    return m_Coders[GetState(pos, prevByte)].DecodeWithMatchByte(rangeDecoder, matchByte);
+                }
+
+                private struct Decoder2
+                {
+                    private BitDecoder[] m_Decoders;
+
+                    public void Create()
+                    {
+                        m_Decoders = new BitDecoder[0x300];
+                    }
+
+                    public void Init()
+                    {
+                        for(var i = 0; i < 0x300; i++) m_Decoders[i].Init();
+                    }
+
+                    public byte DecodeNormal(Decoder rangeDecoder)
+                    {
+                        uint symbol = 1;
+                        do
+                        {
+                            symbol = (symbol << 1) | m_Decoders[symbol].Decode(rangeDecoder);
+                        } while(symbol < 0x100);
+                        return (byte) symbol;
+                    }
+
+                    public byte DecodeWithMatchByte(Decoder rangeDecoder, byte matchByte)
+                    {
+                        uint symbol = 1;
+                        do
+                        {
+                            var matchBit = (uint) (matchByte >> 7) & 1;
+                            matchByte <<= 1;
+                            var bit = m_Decoders[((1 + matchBit) << 8) + symbol].Decode(rangeDecoder);
+                            symbol = (symbol << 1) | bit;
+                            if(matchBit != bit)
+                            {
+                                while(symbol < 0x100)
+                                    symbol = (symbol << 1) | m_Decoders[symbol].Decode(rangeDecoder);
+                                break;
+                            }
+                        } while(symbol < 0x100);
+                        return (byte) symbol;
+                    }
+                }
+            }
+        }
+
+        private class OutWindow
+        {
+            private byte[] _buffer;
+            private uint _pos;
+            private Stream _stream;
+            private uint _streamPos;
+            private uint _windowSize;
+
+            public void Create(uint windowSize)
+            {
+                if(_windowSize != windowSize) _buffer = new byte[windowSize];
+                _windowSize = windowSize;
+                _pos = 0;
+                _streamPos = 0;
+            }
+
+            public void Init(Stream stream, bool solid)
+            {
+                ReleaseStream();
+                _stream = stream;
+                if(!solid)
+                {
+                    _streamPos = 0;
+                    _pos = 0;
+                }
+            }
+
+            public void ReleaseStream()
+            {
+                Flush();
+                _stream = null;
+                Buffer.BlockCopy(new byte[_buffer.Length], 0, _buffer, 0, _buffer.Length);
+            }
+
+            public void Flush()
+            {
+                var size = _pos - _streamPos;
+                if(size == 0)
+                    return;
+                _stream.Write(_buffer, (int) _streamPos, (int) size);
+                if(_pos >= _windowSize)
+                    _pos = 0;
+                _streamPos = _pos;
+            }
+
+            public void CopyBlock(uint distance, uint len)
+            {
+                var pos = _pos - distance - 1;
+                if(pos >= _windowSize)
+                    pos += _windowSize;
+                for(; len > 0; len--)
+                {
+                    if(pos >= _windowSize)
+                        pos = 0;
+                    _buffer[_pos++] = _buffer[pos++];
+                    if(_pos >= _windowSize)
+                        Flush();
+                }
+            }
+
+            public void PutByte(byte b)
+            {
+                _buffer[_pos++] = b;
+                if(_pos >= _windowSize)
+                    Flush();
+            }
+
+            public byte GetByte(uint distance)
+            {
+                var pos = _pos - distance - 1;
+                if(pos >= _windowSize)
+                    pos += _windowSize;
+                return _buffer[pos];
+            }
+        }
+
+        private struct State
+        {
+            public uint Index;
+
+            public void Init()
+            {
+                Index = 0;
+            }
+
+            public void UpdateChar()
+            {
+                if(Index < 4) Index = 0;
+                else if(Index < 10) Index -= 3;
+                else Index -= 6;
+            }
+
+            public void UpdateMatch()
+            {
+                Index = (uint) (Index < 7 ? 7 : 10);
+            }
+
+            public void UpdateRep()
+            {
+                Index = (uint) (Index < 7 ? 8 : 11);
+            }
+
+            public void UpdateShortRep()
+            {
+                Index = (uint) (Index < 7 ? 9 : 11);
+            }
+
+            public bool IsCharState()
+            {
+                return Index < 7;
+            }
+        }
+    }
+}

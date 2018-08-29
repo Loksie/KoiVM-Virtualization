@@ -1,0 +1,32 @@
+NOP                 NO OPERATION
+
+LIND                INDIRECT PUSH
+SIND                INDIRECT POP
+POP    [reg]        STACK POP
+PUSH   [reg/imm]    STACK PUSH
+SX                  SIGN EXTEND
+CALL                CALL METHOD
+RET                 RETURN
+
+NOR                 LOGICAL NOR
+
+CMP                 COMPARE
+JZ                  JUMP IF ZERO
+JNZ                 JUMP IF NOT ZERO
+JMP                 UNCONDITIONAL JUMP
+SWT                 SWITCH JUMP TABLE
+
+ADD                 INTEGER ADD
+MUL                 INTEGER MULTIPLY
+DIV                 INTEGER DIVIDE
+REM                 INTEGER REMAINDER
+SHR                 SHIFT RIGHT
+SHL                 SHIFT LEFT
+
+FCONV               FLOAT CONVERT INTEGER
+ICONV               INTEGER CONVERT FLOAT
+
+TRY                 ENTER PROTECTED REGION
+LEAVE               LEAVE PROTECTED REGION
+
+VCALL               VM CALL

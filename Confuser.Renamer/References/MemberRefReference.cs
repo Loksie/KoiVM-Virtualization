@@ -1,0 +1,32 @@
+﻿#region
+
+using Confuser.Core;
+using dnlib.DotNet;
+
+#endregion
+
+namespace Confuser.Renamer.References
+{
+    public class MemberRefReference : INameReference<IDnlibDef>
+    {
+        private readonly IDnlibDef memberDef;
+        private readonly MemberRef memberRef;
+
+        public MemberRefReference(MemberRef memberRef, IDnlibDef memberDef)
+        {
+            this.memberRef = memberRef;
+            this.memberDef = memberDef;
+        }
+
+        public bool UpdateNameReference(ConfuserContext context, INameService service)
+        {
+            memberRef.Name = memberDef.Name;
+            return true;
+        }
+
+        public bool ShouldCancelRename()
+        {
+            return false;
+        }
+    }
+}

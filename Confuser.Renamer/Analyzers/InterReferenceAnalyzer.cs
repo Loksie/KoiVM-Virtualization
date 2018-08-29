@@ -1,0 +1,81 @@
+﻿#region
+
+using System.Linq;
+using Confuser.Core;
+using Confuser.Renamer.References;
+using dnlib.DotNet;
+using dnlib.DotNet.MD;
+
+#endregion
+
+namespace Confuser.Renamer.Analyzers
+{
+    internal class InterReferenceAnalyzer : IRenamer
+    {
+        // i.e. Inter-Assembly References, e.g. InternalVisibleToAttributes
+
+        public void Analyze(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def)
+        {
+            var module = def as ModuleDefMD;
+            if(module == null) return;
+
+            // MemberRef/MethodSpec
+            var methods = module.GetTypes().SelectMany(type => type.Methods);
+            foreach(var methodDef in methods)
+            {
+                foreach(var ov in methodDef.Overrides)
+                {
+                    ProcessMemberRef(context, service, module, ov.MethodBody);
+                    ProcessMemberRef(context, service, module, ov.MethodDeclaration);
+                }
+
+                if(!methodDef.HasBody)
+                    continue;
+                foreach(var instr in methodDef.Body.Instructions)
+                    if(instr.Operand is MemberRef || instr.Operand is MethodSpec)
+                        ProcessMemberRef(context, service, module, (IMemberRef) instr.Operand);
+            }
+
+            // TypeRef
+            var table = module.TablesStream.Get(Table.TypeRef);
+            var len = table.Rows;
+            for(uint i = 1; i <= len; i++)
+            {
+                var typeRef = module.ResolveTypeRef(i);
+
+                var typeDef = typeRef.ResolveTypeDefThrow();
+                if(typeDef.Module != module && context.Modules.Contains((ModuleDefMD) typeDef.Module)) service.AddReference(typeDef, new TypeRefReference(typeRef, typeDef));
+            }
+        }
+
+        public void PreRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def)
+        {
+            //
+        }
+
+        public void PostRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def)
+        {
+            //
+        }
+
+        private void ProcessMemberRef(ConfuserContext context, INameService service, ModuleDefMD module, IMemberRef r)
+        {
+            var memberRef = r as MemberRef;
+            if(r is MethodSpec)
+                memberRef = ((MethodSpec) r).Method as MemberRef;
+
+            if(memberRef != null)
+            {
+                if(memberRef.DeclaringType.TryGetArraySig() != null)
+                    return;
+
+                var declType = memberRef.DeclaringType.ResolveTypeDefThrow();
+                if(declType.Module != module && context.Modules.Contains((ModuleDefMD) declType.Module))
+                {
+                    var memberDef = (IDnlibDef) declType.ResolveThrow(memberRef);
+                    service.AddReference(memberDef, new MemberRefReference(memberRef, memberDef));
+                }
+            }
+        }
+    }
+}
